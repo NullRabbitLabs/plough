@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "signed_header_1": {
+        "message": {
+          "slot": "6600000",
+          "proposer_index": "77777",
+          "parent_root": "0xaaa",
+          "state_root": "0xbbb",
+          "body_root": "0xccc"
+        },
+        "signature": "0xsig3"
+      },
+      "signed_header_2": {
+        "message": {
+          "slot": "6600000",
+          "proposer_index": "77777",
+          "parent_root": "0xddd",
+          "state_root": "0xeee",
+          "body_root": "0xfff"
+        },
+        "signature": "0xsig4"
+      }
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "current": [
+      {
+        "votePubkey": "ValidatorVote111111111111111111111111111111",
+        "nodePubkey": "ValidatorIdent11111111111111111111111111111",
+        "activatedStake": 1000000000000000,
+        "commission": 10,
+        "lastVote": 250000000,
+        "rootSlot": 249999900,
+        "epochCredits": [[600, 100000, 90000]]
+      }
+    ],
+    "delinquent": [
+      {
+        "votePubkey": "DelinquentVote111111111111111111111111111111",
+        "nodePubkey": "DelinquentIdent1111111111111111111111111111",
+        "activatedStake": 5000000000000000,
+        "commission": 5,
+        "lastVote": 249900000,
+        "rootSlot": 249800000,
+        "epochCredits": [[600, 80000, 70000]]
+      },
+      {
+        "votePubkey": "SmallDelinquent111111111111111111111111111111",
+        "nodePubkey": "SmallDelinquent1Ident111111111111111111111111",
+        "activatedStake": 100000000,
+        "commission": 0,
+        "lastVote": 249900000,
+        "rootSlot": 249800000,
+        "epochCredits": []
+      }
+    ]
+  },
+  "id": 1
+}

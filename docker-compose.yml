@@ -1,0 +1,9 @@
+services:
+  validator-monitor:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    environment:
+      - STATE_PATH=/data/state.json

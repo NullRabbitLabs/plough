@@ -1,0 +1,27 @@
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "epoch": "42",
+    "activeValidators": [
+      {
+        "name": "ValidatorAlpha",
+        "suiAddress": "0xaaaa1111",
+        "stakingPoolSuiBalance": "1000000000000",
+        "nextEpochStake": "1050000000000"
+      },
+      {
+        "name": "ValidatorBeta",
+        "suiAddress": "0xbbbb2222",
+        "stakingPoolSuiBalance": "500000000000",
+        "nextEpochStake": "480000000000"
+      },
+      {
+        "name": "ValidatorGamma",
+        "suiAddress": "0xcccc3333",
+        "stakingPoolSuiBalance": "2000000000000",
+        "nextEpochStake": "1000000000000"
+      }
+    ]
+  },
+  "id": 1
+}

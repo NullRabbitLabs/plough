@@ -1,0 +1,19 @@
+{
+  "data": [
+    {
+      "validatorindex": 12345,
+      "slashedby": 67890,
+      "slashtype": "attester",
+      "epoch": 200000,
+      "slot": 6400000
+    },
+    {
+      "validatorindex": 99999,
+      "slashedby": 11111,
+      "slashtype": "proposer",
+      "epoch": 200001,
+      "slot": 6400032
+    }
+  ],
+  "status": "OK"
+}

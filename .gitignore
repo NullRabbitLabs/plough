@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+state.json
+data/
+.pytest_cache/
+.claude/
+prompt.md

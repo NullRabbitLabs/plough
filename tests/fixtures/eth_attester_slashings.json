@@ -1,0 +1,28 @@
+{
+  "data": [
+    {
+      "attestation_1": {
+        "attesting_indices": ["55555", "66666"],
+        "data": {
+          "slot": "6500000",
+          "index": "0",
+          "beacon_block_root": "0xabc",
+          "source": {"epoch": "199000", "root": "0xdef"},
+          "target": {"epoch": "200000", "root": "0xghi"}
+        },
+        "signature": "0xsig1"
+      },
+      "attestation_2": {
+        "attesting_indices": ["55555"],
+        "data": {
+          "slot": "6500001",
+          "index": "0",
+          "beacon_block_root": "0xjkl",
+          "source": {"epoch": "199000", "root": "0xmno"},
+          "target": {"epoch": "200000", "root": "0xpqr"}
+        },
+        "signature": "0xsig2"
+      }
+    }
+  ]
+}
