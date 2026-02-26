@@ -2,7 +2,7 @@
 
 Multi-chain validator incident monitor. Watches Ethereum, Solana, Sui, Cosmos, and Polkadot validators for slashings, delinquency, and stake anomalies. Sends alerts to Telegram and/or Slack.
 
-When a Solana validator goes delinquent, plough enriches the alert with operator identity, scan history, and IP data — and can automatically trigger a security scan via the [Ferret](https://github.com/nullrabbit/ferret) scan platform.
+When a Solana validator goes delinquent, plough enriches the alert with operator identity, scan history, and IP data — and can automatically trigger a security scan via a configurable scan API.
 
 ## Features
 
@@ -15,10 +15,10 @@ When a Solana validator goes delinquent, plough enriches the alert with operator
 **Enrichment (Solana)**
 - Operator metadata from `known_operators.json` and [Stakewiz](https://stakewiz.com) cache
 - IP resolution via `getClusterNodes` with persistent cache (last-known IPs survive validator going offline)
-- Scan data from [Ferret](https://github.com/nullrabbit/ferret) scan history
+- Previous scan history (imported via `--import-scans`)
 
 **Auto-scanning**
-- Automatically submits scan jobs to the Ferret scan API on delinquency incidents
+- Automatically submits scan jobs to a configurable scan API on delinquency incidents
 - Rate limiting, per-validator cooldown, stake threshold filtering, and persistent scan queue
 
 ## Quick start
@@ -66,7 +66,7 @@ ENABLE_AUTO_SCAN=true .venv/bin/python monitor.py --scan <VOTE_ACCOUNT>
 # Bootstrap Sui operator data into known_operators.json
 .venv/bin/python monitor.py --bootstrap-sui
 
-# Import scan results from Ferret export
+# Import scan results from a scan export
 .venv/bin/python monitor.py --import-scans /path/to/export.json
 ```
 
@@ -155,12 +155,12 @@ Create `known_operators.json` to map validator pubkeys/indices to human-readable
 | `POLL_INTERVAL_DOT` | `300` | Poll interval (seconds) |
 | `DOT_COOLDOWN_SECONDS` | `3600` | Per-validator alert cooldown |
 
-### Ferret scan integration (optional)
+### Scan API integration (optional)
 
 | Variable | Default | Description |
 |---|---|---|
 | `ENABLE_AUTO_SCAN` | `false` | Enable automatic scan submission on incidents |
-| `SCAN_API_URL` | | Ferret scan platform URL |
+| `SCAN_API_URL` | | Scan API base URL |
 | `SCAN_API_TOKEN` | | Bearer token for scan API |
 | `SCAN_COOLDOWN` | `86400` | Seconds between scans for the same validator |
 | `SCAN_RATE_LIMIT` | `5` | Max scan submissions per hour |
@@ -174,7 +174,7 @@ Create `known_operators.json` to map validator pubkeys/indices to human-readable
 |---|---|---|
 | `STATE_PATH` | `state.json` | Alert dedup and cooldown state |
 | `OPERATORS_PATH` | `known_operators.json` | Known operator mappings |
-| `SCANNED_VALIDATORS_PATH` | `scanned_validators.json` | Ferret scan history index |
+| `SCANNED_VALIDATORS_PATH` | `scanned_validators.json` | Scan history index |
 
 ## Tests
 
