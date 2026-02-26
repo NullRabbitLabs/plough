@@ -1,0 +1,37 @@
+{
+  "code": 0,
+  "message": "Success",
+  "generated_at": 1700000000,
+  "data": {
+    "count": 3,
+    "list": [
+      {
+        "stash_account_display": {
+          "address": "1abc123def456",
+          "display": "MyDotNode"
+        },
+        "is_elected": true,
+        "validator_prefs_value": 50000000,
+        "bonded_total": "1000000000000"
+      },
+      {
+        "stash_account_display": {
+          "address": "1ghi789jkl012",
+          "display": "AnotherNode"
+        },
+        "is_elected": true,
+        "validator_prefs_value": 100000000,
+        "bonded_total": "500000000000"
+      },
+      {
+        "stash_account_display": {
+          "address": "1mno345pqr678",
+          "display": "InactiveNode"
+        },
+        "is_elected": false,
+        "validator_prefs_value": 0,
+        "bonded_total": "200000000000"
+      }
+    ]
+  }
+}

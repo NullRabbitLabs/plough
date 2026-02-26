@@ -1,0 +1,64 @@
+{
+  "version": "bellatrix",
+  "data": {
+    "message": {
+      "slot": "7000001",
+      "proposer_index": "100",
+      "parent_root": "0xabc",
+      "state_root": "0xdef",
+      "body": {
+        "attester_slashings": [
+          {
+            "attestation_1": {
+              "attesting_indices": ["11111", "22222"],
+              "data": {
+                "slot": "7000001",
+                "index": "0",
+                "beacon_block_root": "0xaaa",
+                "source": {"epoch": "218750", "root": "0xbbb"},
+                "target": {"epoch": "218751", "root": "0xccc"}
+              },
+              "signature": "0xsig1"
+            },
+            "attestation_2": {
+              "attesting_indices": ["11111"],
+              "data": {
+                "slot": "7000001",
+                "index": "0",
+                "beacon_block_root": "0xddd",
+                "source": {"epoch": "218750", "root": "0xeee"},
+                "target": {"epoch": "218751", "root": "0xfff"}
+              },
+              "signature": "0xsig2"
+            }
+          }
+        ],
+        "proposer_slashings": [
+          {
+            "signed_header_1": {
+              "message": {
+                "slot": "7000001",
+                "proposer_index": "33333",
+                "parent_root": "0xaaa",
+                "state_root": "0xbbb",
+                "body_root": "0xccc"
+              },
+              "signature": "0xsig3"
+            },
+            "signed_header_2": {
+              "message": {
+                "slot": "7000001",
+                "proposer_index": "33333",
+                "parent_root": "0xddd",
+                "state_root": "0xeee",
+                "body_root": "0xfff"
+              },
+              "signature": "0xsig4"
+            }
+          }
+        ]
+      }
+    },
+    "signature": "0xblocksig"
+  }
+}

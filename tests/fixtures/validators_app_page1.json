@@ -1,0 +1,22 @@
+[
+  {
+    "vote_account": "DelinquentVote111111111111111111111111111111",
+    "name": "Chorus One",
+    "www_url": "https://chorus.one",
+    "keybase_id": "chorusone",
+    "twitter_handle": "chorusone",
+    "discord": "",
+    "telegram": "",
+    "keybase": "chorusone"
+  },
+  {
+    "vote_account": "AnotherVote222222222222222222222222222222222",
+    "name": "Figment",
+    "www_url": "https://figment.io",
+    "keybase_id": "figment",
+    "twitter_handle": "Figment_io",
+    "discord": "figment",
+    "telegram": "",
+    "keybase": "figment"
+  }
+]

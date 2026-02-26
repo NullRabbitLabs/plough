@@ -47,15 +47,21 @@ class EthMonitor:
         import json
         try:
             with open(self._operators_path) as f:
-                return json.load(f)
+                data = json.load(f)
+            if "ethereum" in data:
+                return data["ethereum"]
+            return data
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
 
     def resolve_operator(self, validator_index: int) -> str:
         key = str(validator_index)
-        if key in self._known_operators:
-            return self._known_operators[key]
-        return f"Validator #{validator_index}"
+        entry = self._known_operators.get(key)
+        if entry is None:
+            return f"Validator #{validator_index}"
+        if isinstance(entry, dict):
+            return entry.get("name", f"Validator #{validator_index}")
+        return entry
 
     def parse_beaconcha_slashings(self, data: dict) -> List[EthSlashingEvent]:
         events = []
@@ -72,51 +78,111 @@ class EthMonitor:
             )
         return events
 
+    def _parse_attester_slashing_item(self, item: dict) -> List[EthSlashingEvent]:
+        att1 = item["attestation_1"]
+        slot = int(att1["data"]["slot"])
+        att1_indices = set(att1["attesting_indices"])
+        att2_indices = set(item["attestation_2"]["attesting_indices"])
+        slashed = att1_indices & att2_indices
+        return [
+            EthSlashingEvent(
+                validator_index=int(idx),
+                slashed_by=0,
+                slash_type="attester",
+                epoch=0,
+                slot=slot,
+                operator_name=self.resolve_operator(int(idx)),
+            )
+            for idx in slashed
+        ]
+
+    def _parse_proposer_slashing_item(self, item: dict) -> EthSlashingEvent:
+        header = item["signed_header_1"]["message"]
+        slot = int(header["slot"])
+        validator_index = int(header["proposer_index"])
+        return EthSlashingEvent(
+            validator_index=validator_index,
+            slashed_by=0,
+            slash_type="proposer",
+            epoch=0,
+            slot=slot,
+            operator_name=self.resolve_operator(validator_index),
+        )
+
     def parse_attester_slashings(self, data: dict) -> List[EthSlashingEvent]:
         events = []
         for item in data.get("data", []):
-            att1 = item["attestation_1"]
-            indices = att1["data"]
-            slot = int(att1["data"]["slot"])
-            # The first attesting index is the slashed validator
-            raw_indices = item["attestation_1"]["attesting_indices"]
-            validator_index = int(raw_indices[0])
-            events.append(
-                EthSlashingEvent(
-                    validator_index=validator_index,
-                    slashed_by=0,
-                    slash_type="attester",
-                    epoch=0,
-                    slot=slot,
-                    operator_name=self.resolve_operator(validator_index),
-                )
-            )
+            events.extend(self._parse_attester_slashing_item(item))
         return events
 
     def parse_proposer_slashings(self, data: dict) -> List[EthSlashingEvent]:
-        events = []
-        for item in data.get("data", []):
-            header = item["signed_header_1"]["message"]
-            slot = int(header["slot"])
-            validator_index = int(header["proposer_index"])
-            events.append(
-                EthSlashingEvent(
-                    validator_index=validator_index,
-                    slashed_by=0,
-                    slash_type="proposer",
-                    epoch=0,
-                    slot=slot,
-                    operator_name=self.resolve_operator(validator_index),
-                )
+        return [self._parse_proposer_slashing_item(item) for item in data.get("data", [])]
+
+    async def fetch_finalized_slot(self) -> int:
+        base = self.config.eth_beacon_node_url
+        resp = await self.client.get(f"{base}/eth/v1/beacon/headers/finalized")
+        resp.raise_for_status()
+        data = resp.json()
+        return int(data["data"]["header"]["message"]["slot"])
+
+    async def fetch_block_slashings(self, slot: int) -> List[EthSlashingEvent]:
+        base = self.config.eth_beacon_node_url
+        try:
+            resp = await self.client.get(f"{base}/eth/v2/beacon/blocks/{slot}")
+            resp.raise_for_status()
+            data = resp.json()
+            body = data["data"]["message"]["body"]
+            events: List[EthSlashingEvent] = []
+            for item in body.get("attester_slashings", []):
+                events.extend(self._parse_attester_slashing_item(item))
+            for item in body.get("proposer_slashings", []):
+                events.append(self._parse_proposer_slashing_item(item))
+            return events
+        except Exception as e:
+            logger.warning("Failed to fetch block %d: %s", slot, e)
+            return []
+
+    async def fetch_block_range_slashings(self) -> List[EthSlashingEvent]:
+        finalized_slot = await self.fetch_finalized_slot()
+        last_slot = self.state.get_last_eth_slot()
+
+        if last_slot == 0:
+            logger.info("ETH: initialising slot tracking at %d", finalized_slot)
+            self.state.set_last_eth_slot(finalized_slot)
+            self.state.save()
+            return []
+
+        if finalized_slot <= last_slot:
+            logger.debug(
+                "ETH: no new finalized slots (finalized=%d, last=%d)",
+                finalized_slot,
+                last_slot,
             )
+            return []
+
+        start = last_slot + 1
+        end = min(finalized_slot, last_slot + self.config.eth_max_slots_per_poll)
+        logger.info("ETH: scanning slots %d–%d (finalized=%d)", start, end, finalized_slot)
+
+        events: List[EthSlashingEvent] = []
+        for slot in range(start, end + 1):
+            events.extend(await self.fetch_block_slashings(slot))
+
+        self.state.set_last_eth_slot(end)
+        self.state.save()
         return events
 
     async def fetch_slashings(self) -> List[EthSlashingEvent]:
+        events: List[EthSlashingEvent] = []
         try:
-            return await self.fetch_fallback_slashings()
+            events.extend(await self.fetch_block_range_slashings())
+        except Exception as e:
+            logger.error("ETH block scan failed: %s", e)
+        try:
+            events.extend(await self.fetch_fallback_slashings())
         except Exception as e:
             logger.error("ETH beacon pool fetch failed: %s", e)
-            return []
+        return events
 
     async def fetch_fallback_slashings(self) -> List[EthSlashingEvent]:
         base = self.config.eth_beacon_node_url

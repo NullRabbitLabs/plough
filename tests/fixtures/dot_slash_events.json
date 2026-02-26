@@ -1,0 +1,46 @@
+{
+  "code": 0,
+  "message": "Success",
+  "generated_at": 1700000000,
+  "data": {
+    "count": 2,
+    "events": [
+      {
+        "event_index": "12345678-2",
+        "block_num": 12345678,
+        "module_id": "staking",
+        "event_id": "Slash",
+        "params": [
+          {
+            "name": "stash",
+            "type_name": "T::AccountId",
+            "value": "1abc123def456"
+          },
+          {
+            "name": "amount",
+            "type_name": "BalanceOf<T>",
+            "value": "500000000000"
+          }
+        ]
+      },
+      {
+        "event_index": "12345679-1",
+        "block_num": 12345679,
+        "module_id": "staking",
+        "event_id": "Slash",
+        "params": [
+          {
+            "name": "stash",
+            "type_name": "T::AccountId",
+            "value": "1zzz999yyy888"
+          },
+          {
+            "name": "amount",
+            "type_name": "BalanceOf<T>",
+            "value": "100000000000"
+          }
+        ]
+      }
+    ]
+  }
+}

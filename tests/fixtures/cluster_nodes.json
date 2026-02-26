@@ -1,0 +1,27 @@
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "pubkey": "DelinquentIdent1111111111111111111111111111",
+      "gossip": "52.12.34.56:8001",
+      "tpu": "52.12.34.56:8004",
+      "rpc": "52.12.34.56:8899",
+      "version": "1.18.0"
+    },
+    {
+      "pubkey": "AnotherIdent2222222222222222222222222222222",
+      "gossip": "10.0.0.1:8001",
+      "tpu": null,
+      "rpc": null,
+      "version": "1.18.0"
+    },
+    {
+      "pubkey": "NoGossipIdent333333333333333333333333333333",
+      "gossip": null,
+      "tpu": null,
+      "rpc": null,
+      "version": "1.18.0"
+    }
+  ],
+  "id": 1
+}

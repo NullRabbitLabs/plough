@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from config import Config
 from state import State
 from alerter import Alerter
+from enrichment import Enricher, EnrichedData, ScanData
 from sol_monitor import SolMonitor, SolValidator
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -90,82 +91,80 @@ class TestMassEvent:
     @pytest.mark.asyncio
     async def test_mass_event_threshold_triggers_grouped_alert(self, monitor, state, alerter):
         state.set_previous_delinquent(set())
+        state.set_candidate_delinquent(set())
         validators = [
             SolValidator(f"Id{i}", f"Vote{i}", 5000.0, 5, 100, 90) for i in range(6)
         ]
         with patch.object(alerter, "alert_sol_delinquent", new_callable=AsyncMock) as mock_alert:
+            # Poll 1: validators become candidates
+            await monitor.process_delinquent(validators, state)
+            mock_alert.assert_not_called()
+            # Poll 2: confirmed delinquent → grouped alert
             await monitor.process_delinquent(validators, state)
             mock_alert.assert_called_once()
-            _, kwargs = mock_alert.call_args
             assert mock_alert.call_args[1].get("is_mass") or mock_alert.call_args[0][1] is True
 
     @pytest.mark.asyncio
     async def test_below_mass_threshold_individual_alerts(self, monitor, state, alerter):
         state.set_previous_delinquent(set())
+        state.set_candidate_delinquent(set())
         validators = [
             SolValidator(f"Id{i}", f"Vote{i}", 5000.0, 5, 100, 90) for i in range(3)
         ]
         with patch.object(alerter, "alert_sol_delinquent", new_callable=AsyncMock) as mock_alert:
+            # Poll 1: candidates
             await monitor.process_delinquent(validators, state)
-            # 3 validators below threshold → called once with is_mass=False
-            # OR called 3 times individually, depending on impl
+            assert not mock_alert.called
+            # Poll 2: confirmed
+            await monitor.process_delinquent(validators, state)
             assert mock_alert.called
 
 
-class TestEnrichment:
+class TestEnrichmentIntegration:
     @pytest.mark.asyncio
-    async def test_enrich_populates_name_and_website(self, monitor, mock_client):
-        registry = json.loads((FIXTURES_DIR / "stakewiz_validators.json").read_text())
-        resp = MagicMock()
-        resp.json.return_value = registry
-        resp.raise_for_status = MagicMock()
-        mock_client.get = AsyncMock(return_value=resp)
-
+    async def test_enricher_called_per_validator(self, config, state, alerter, mock_client):
+        mock_enricher = AsyncMock(spec=Enricher)
+        mock_enricher.enrich_solana = AsyncMock(return_value=EnrichedData(
+            name="Chorus One", website="https://chorus.one", keybase="chorusone",
+            twitter="chorusone", discord="", ips=["1.2.3.4"], rdns="ec2.amazonaws.com",
+        ))
+        monitor = SolMonitor(config, state, alerter, mock_client, enricher=mock_enricher)
         validators = [
-            SolValidator("Id1", "DelinquentVote111111111111111111111111111111", 5000.0, 5, 100, 90)
+            SolValidator("Id1", "Vote1", 5000.0, 5, 100, 90),
+            SolValidator("Id2", "Vote2", 5000.0, 5, 100, 90),
         ]
         await monitor.enrich_validators(validators)
+        assert mock_enricher.enrich_solana.call_count == 2
         assert validators[0].name == "Chorus One"
         assert validators[0].website == "https://chorus.one"
-        assert validators[0].keybase == "chorusone"
+        assert validators[0].ips == ["1.2.3.4"]
+        assert validators[1].name == "Chorus One"
 
     @pytest.mark.asyncio
-    async def test_enrich_unknown_validator_leaves_fields_empty(self, monitor, mock_client):
-        resp = MagicMock()
-        resp.json.return_value = []
-        resp.raise_for_status = MagicMock()
-        mock_client.get = AsyncMock(return_value=resp)
-
-        validators = [SolValidator("Id1", "UnknownVote111", 5000.0, 5, 100, 90)]
+    async def test_enrichment_fields_applied(self, config, state, alerter, mock_client):
+        scan = ScanData("Vote1", "solana", ["1.2.3.4"], [{"service": "SSH", "port": 22, "severity": "high"}], "2024-06-01")
+        mock_enricher = AsyncMock(spec=Enricher)
+        mock_enricher.enrich_solana = AsyncMock(return_value=EnrichedData(
+            name="Acme", website="https://acme.io", keybase="acme",
+            twitter="acme_validator", discord="acme", ips=["10.0.0.1"], rdns="acme.example.com",
+            scan=scan,
+        ))
+        monitor = SolMonitor(config, state, alerter, mock_client, enricher=mock_enricher)
+        validators = [SolValidator("Id1", "Vote1", 5000.0, 5, 100, 90)]
         await monitor.enrich_validators(validators)
-        assert validators[0].name == ""
-        assert validators[0].website == ""
+        v = validators[0]
+        assert v.name == "Acme"
+        assert v.twitter == "acme_validator"
+        assert v.discord == "acme"
+        assert v.rdns == "acme.example.com"
+        assert v.scan is scan
 
     @pytest.mark.asyncio
-    async def test_enrich_fails_gracefully(self, monitor, mock_client):
-        mock_client.get = AsyncMock(side_effect=Exception("network error"))
-        validators = [SolValidator("Id1", "SomeVote111", 5000.0, 5, 100, 90)]
+    async def test_none_enricher_is_noop(self, monitor):
+        validators = [SolValidator("Id1", "Vote1", 5000.0, 5, 100, 90)]
         await monitor.enrich_validators(validators)  # should not raise
         assert validators[0].name == ""
-
-    def test_format_includes_name_when_present(self, alerter):
-        v = SolValidator("Id1", "Vote111", 5000.0, 5, 100, 90, name="Chorus One", website="https://chorus.one")
-        msg = alerter.format_sol_delinquent([v], is_mass=False)
-        assert "Chorus One" in msg
-        assert "https://chorus.one" in msg
-
-    def test_format_omits_name_line_when_empty(self, alerter):
-        v = SolValidator("Id1", "Vote111", 5000.0, 5, 100, 90)
-        msg = alerter.format_sol_delinquent([v], is_mass=False)
-        assert "Name:" not in msg
-
-    def test_mass_format_includes_names(self, alerter):
-        validators = [
-            SolValidator(f"Id{i}", f"Vote{i}", 1000.0, 5, 100, 90, name=f"Op {i}")
-            for i in range(6)
-        ]
-        msg = alerter.format_sol_delinquent(validators, is_mass=True)
-        assert "Op 0" in msg
+        assert validators[0].ips == []
 
 
 class TestCooldown:
@@ -183,3 +182,61 @@ class TestCooldown:
             # The monitor itself should filter cooldown validators before calling alerter
             # OR the alerter does it — either design is acceptable
             pass  # cooldown tested at alerter level
+
+
+class TestConfirmation:
+    @pytest.mark.asyncio
+    async def test_first_poll_no_alert(self, monitor, state, alerter):
+        """Newly delinquent validator does not alert on first detection."""
+        state.set_previous_delinquent(set())
+        state.set_candidate_delinquent(set())
+        validators = [SolValidator("Id1", "Vote1", 5000.0, 5, 100, 90)]
+        with patch.object(alerter, "alert_sol_delinquent", new_callable=AsyncMock) as mock_alert:
+            await monitor.process_delinquent(validators, state)
+            mock_alert.assert_not_called()
+        assert "Vote1" in state.get_candidate_delinquent()
+
+    @pytest.mark.asyncio
+    async def test_second_poll_triggers_alert(self, monitor, state, alerter):
+        """Validator delinquent on second consecutive poll triggers an alert."""
+        state.set_previous_delinquent({"Vote1"})
+        state.set_candidate_delinquent({"Vote1"})
+        validators = [SolValidator("Id1", "Vote1", 5000.0, 5, 100, 90)]
+        with patch.object(alerter, "alert_sol_delinquent", new_callable=AsyncMock) as mock_alert:
+            await monitor.process_delinquent(validators, state)
+            mock_alert.assert_called_once()
+        assert "Vote1" not in state.get_candidate_delinquent()
+
+    @pytest.mark.asyncio
+    async def test_recovered_before_second_poll_no_alert(self, monitor, state, alerter):
+        """Validator recovers before second poll — no alert, removed from candidates."""
+        state.set_previous_delinquent({"Vote1"})
+        state.set_candidate_delinquent({"Vote1"})
+        validators = []  # Vote1 has recovered
+        with patch.object(alerter, "alert_sol_delinquent", new_callable=AsyncMock) as mock_alert:
+            await monitor.process_delinquent(validators, state)
+            mock_alert.assert_not_called()
+        assert "Vote1" not in state.get_candidate_delinquent()
+
+    @pytest.mark.asyncio
+    async def test_full_two_poll_cycle(self, monitor, state, alerter):
+        """Full cycle: candidate on poll 1, alert fires on poll 2."""
+        state.set_previous_delinquent(set())
+        state.set_candidate_delinquent(set())
+        validators = [SolValidator("Id1", "Vote1", 5000.0, 5, 100, 90)]
+        with patch.object(alerter, "alert_sol_delinquent", new_callable=AsyncMock) as mock_alert:
+            await monitor.process_delinquent(validators, state)
+            mock_alert.assert_not_called()
+            await monitor.process_delinquent(validators, state)
+            mock_alert.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_candidate_state_persisted_between_polls(self, monitor, state, alerter):
+        """Candidates are written to state so they survive restarts."""
+        state.set_previous_delinquent(set())
+        state.set_candidate_delinquent(set())
+        validators = [SolValidator("Id1", "VoteX", 5000.0, 5, 100, 90)]
+        with patch.object(alerter, "alert_sol_delinquent", new_callable=AsyncMock):
+            await monitor.process_delinquent(validators, state)
+        assert "VoteX" in state.get_candidate_delinquent()
+        assert "VoteX" in state.get_previous_delinquent()

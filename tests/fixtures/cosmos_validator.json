@@ -1,0 +1,22 @@
+{
+  "validator": {
+    "operator_address": "cosmosvaloper1abc123",
+    "description": {
+      "moniker": "MyCosmosNode",
+      "identity": "",
+      "website": "https://mycosmosnode.example",
+      "details": "A test cosmos validator"
+    },
+    "status": "BOND_STATUS_BONDED",
+    "jailed": false,
+    "tokens": "1000000000000",
+    "delegator_shares": "1000000000000.000000000000000000",
+    "commission": {
+      "commission_rates": {
+        "rate": "0.050000000000000000",
+        "max_rate": "0.200000000000000000",
+        "max_change_rate": "0.010000000000000000"
+      }
+    }
+  }
+}

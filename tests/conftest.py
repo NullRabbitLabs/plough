@@ -40,3 +40,8 @@ def sol_vote_accounts_fixture():
 @pytest.fixture
 def sui_system_state_fixture():
     return load_fixture("sui_system_state.json")
+
+
+@pytest.fixture
+def eth_block_with_slashings_fixture():
+    return load_fixture("eth_block_with_slashings.json")

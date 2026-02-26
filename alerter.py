@@ -1,7 +1,7 @@
 import logging
 import re
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 import httpx
 
@@ -63,7 +63,71 @@ class Alerter:
             f"Slashed by: #{event.slashed_by}"
         )
 
-    def format_sol_delinquent(self, validators: list, is_mass: bool) -> str:
+    def _format_sol_scan_section(self, v) -> str:
+        scan = getattr(v, "scan", None)
+        if scan is None:
+            return "🔍 NOT IN SCAN DB"
+        ips_str = ", ".join(scan.ip_addresses) if scan.ip_addresses else "unknown"
+        exposed = ", ".join(
+            f"{f['service']}:{f['port']}" for f in scan.findings if "service" in f and "port" in f
+        )
+        critical = sum(1 for f in scan.findings if f.get("severity") == "critical")
+        lines = ["🔍 SCAN DATA AVAILABLE"]
+        lines.append(f"IPs: {ips_str}")
+        if exposed:
+            lines.append(f"Exposed: {exposed}")
+        lines.append(f"Critical findings: {critical}")
+        lines.append(f"Last scanned: {scan.scan_date}")
+        return "\n".join(lines)
+
+    def _format_sol_contact_section(self, v) -> str:
+        website = getattr(v, "website", "")
+        twitter = getattr(v, "twitter", "")
+        discord = getattr(v, "discord", "")
+        if not any([website, twitter, discord]):
+            return "📇 NO CONTACT INFO"
+        lines = ["📇 CONTACT"]
+        if website:
+            lines.append(f"Website: {website}")
+        if twitter:
+            lines.append(f"Twitter: {twitter}")
+        if discord:
+            lines.append(f"Discord: {discord}")
+        return "\n".join(lines)
+
+    def _format_scan_status(self, result, ips: list) -> str:
+        if result is None:
+            return ""
+        status = result.status
+        if status == "triggered":
+            ips_str = ", ".join(result.ips) if result.ips else ", ".join(ips)
+            return "\n".join([
+                "🔍 SCAN TRIGGERED",
+                f"IPs: {ips_str}",
+                "Source: ferret/solana_delinquency",
+                "Status: submitted",
+            ])
+        if status == "queued":
+            ips_str = ", ".join(result.ips) if result.ips else ", ".join(ips)
+            return "\n".join([
+                f"🔍 SCAN QUEUED (rate limit — position {result.queue_position})",
+                f"IPs: {ips_str}",
+                "Will submit within ~1 hour",
+            ])
+        if status == "skipped_no_ips":
+            return "\n".join([
+                "⚠️ NO IP RESOLVED — cannot auto-scan",
+                "Manual lookup: solana.fm, validators.app",
+            ])
+        if status == "skipped_cooldown":
+            return "\n".join([
+                "ℹ️ SCAN SKIPPED — scanned recently",
+                f"Last scan: {result.last_scan_at}",
+            ])
+        # skipped_stake / skipped_disabled → silent
+        return ""
+
+    def format_sol_delinquent(self, validators: list, is_mass: bool, scan_results: Optional[dict] = None) -> str:
         if is_mass:
             lines = []
             for v in validators[:10]:
@@ -75,20 +139,30 @@ class Alerter:
                 + "\n".join(lines)
             )
         v = validators[0]
-        parts = ["⚠️ <b>Solana Validator Delinquent</b>"]
+        label = "High Value" if v.name else "Unknown Operator"
+        parts = [f"🟡 SOL DELINQUENT — {label}"]
+        parts.append(f"\nValidator: {v.vote_account[:12]}...")
         if v.name:
             parts.append(f"Name: {v.name}")
-        if v.website:
-            parts.append(f"Website: {v.website}")
-        if v.keybase:
-            parts.append(f"Keybase: {v.keybase}")
-        parts += [
-            f"Vote: {v.vote_account}",
-            f"Identity: {v.identity}",
-            f"Stake: {v.activated_stake_sol:,.0f} SOL",
-            f"Commission: {v.commission}%",
-            f"Last vote: {v.last_vote}",
-        ]
+        parts.append(f"Stake: {v.activated_stake_sol:,.0f} SOL")
+        parts.append(f"Commission: {v.commission}%")
+        parts.append("")
+        parts.append(self._format_sol_scan_section(v))
+        scan_result = (scan_results or {}).get(v.vote_account) if scan_results else None
+        scan_status = self._format_scan_status(scan_result, getattr(v, "ips", []))
+        if scan_status:
+            parts.append("")
+            parts.append(scan_status)
+        parts.append("")
+        parts.append(self._format_sol_contact_section(v))
+        if not v.name:
+            parts.append("")
+            parts.append(f"validators.app: https://validators.app/validators/{v.vote_account}")
+            parts.append(f"solana.fm: https://solana.fm/address/{v.vote_account}")
+        if v.name:
+            parts.append("\nAction: Send disclosure with scan results")
+        else:
+            parts.append("\nAction: Identify operator, add to known_operators.json")
         return "\n".join(parts)
 
     def format_sui_drop(self, validator) -> str:
@@ -144,4 +218,86 @@ class Alerter:
         msg = self.format_sui_drop(validator)
         await self.send_message(msg)
         self.state.record_alert(validator.sui_address)
+        self.state.save()
+
+    def format_cosmos_jailed(self, validator) -> str:
+        return (
+            f"🚨 <b>Cosmos Validator Jailed</b>\n"
+            f"Moniker: <b>{validator.moniker}</b>\n"
+            f"Address: <code>{validator.operator_address}</code>\n"
+            f"Status: {validator.status}"
+        )
+
+    def format_cosmos_inactive(self, validator) -> str:
+        return (
+            f"⚠️ <b>Cosmos Validator Inactive</b>\n"
+            f"Moniker: <b>{validator.moniker}</b>\n"
+            f"Address: <code>{validator.operator_address}</code>\n"
+            f"Status: {validator.status}"
+        )
+
+    async def alert_cosmos_jailed(self, validator) -> None:
+        if self.state.is_on_cooldown(validator.operator_address, self.config.cosmos_cooldown_seconds):
+            logger.debug("Cooldown active for %s, skipping", validator.operator_address)
+            return
+        if self._is_quiet_hours():
+            logger.info("Quiet hours — suppressing Cosmos jailed alert %s", validator.operator_address)
+            return
+        msg = self.format_cosmos_jailed(validator)
+        await self.send_message(msg)
+        self.state.record_alert(validator.operator_address)
+        self.state.save()
+
+    async def alert_cosmos_inactive(self, validator) -> None:
+        if self.state.is_on_cooldown(validator.operator_address, self.config.cosmos_cooldown_seconds):
+            logger.debug("Cooldown active for %s, skipping", validator.operator_address)
+            return
+        if self._is_quiet_hours():
+            logger.info("Quiet hours — suppressing Cosmos inactive alert %s", validator.operator_address)
+            return
+        msg = self.format_cosmos_inactive(validator)
+        await self.send_message(msg)
+        self.state.record_alert(validator.operator_address)
+        self.state.save()
+
+    def format_dot_inactive(self, validator) -> str:
+        return (
+            f"⚠️ <b>Polkadot Validator Not Elected</b>\n"
+            f"Name: <b>{validator.display}</b>\n"
+            f"Stash: <code>{validator.stash}</code>"
+        )
+
+    def format_dot_slashed(self, validator, event) -> str:
+        planck_per_dot = 10_000_000_000
+        amount_dot = event.amount / planck_per_dot
+        return (
+            f"🚨 <b>Polkadot Validator Slashed</b>\n"
+            f"Name: <b>{validator.display}</b>\n"
+            f"Stash: <code>{validator.stash}</code>\n"
+            f"Amount: {amount_dot:.4f} DOT\n"
+            f"Block: {event.block_num} | Event: {event.event_index}"
+        )
+
+    async def alert_dot_inactive(self, validator) -> None:
+        if self.state.is_on_cooldown(validator.stash, self.config.dot_cooldown_seconds):
+            logger.debug("Cooldown active for %s, skipping", validator.stash)
+            return
+        if self._is_quiet_hours():
+            logger.info("Quiet hours — suppressing DOT inactive alert %s", validator.stash)
+            return
+        msg = self.format_dot_inactive(validator)
+        await self.send_message(msg)
+        self.state.record_alert(validator.stash)
+        self.state.save()
+
+    async def alert_dot_slashed(self, validator, event) -> None:
+        event_key = f"dot_slash_{event.event_index}"
+        if self.state.is_seen(event_key):
+            return
+        if self._is_quiet_hours():
+            logger.info("Quiet hours — suppressing DOT slash alert %s", event.event_index)
+            return
+        msg = self.format_dot_slashed(validator, event)
+        await self.send_message(msg)
+        self.state.mark_seen(event_key)
         self.state.save()

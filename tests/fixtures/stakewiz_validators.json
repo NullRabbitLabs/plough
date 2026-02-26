@@ -1,16 +1,35 @@
 [
   {
-    "vote_account": "DelinquentVote111111111111111111111111111111",
+    "vote_identity": "DelinquentVote111111111111111111111111111111",
+    "identity": "NodeIdent1111111111111111111111111111111111",
     "name": "Chorus One",
-    "www_url": "https://chorus.one",
-    "keybase_id": "chorusone",
-    "details": "Professional validator"
+    "website": "https://chorus.one",
+    "keybase": "chorusone",
+    "description": "Professional validator",
+    "activated_stake": 1000000000000,
+    "commission": 5,
+    "delinquent": false
   },
   {
-    "vote_account": "ValidatorVote111111111111111111111111111111",
+    "vote_identity": "AnotherVote222222222222222222222222222222222",
+    "identity": "NodeIdent2222222222222222222222222222222222",
     "name": "Figment",
-    "www_url": "https://figment.io",
-    "keybase_id": "figment",
-    "details": ""
+    "website": "https://figment.io",
+    "keybase": "figment",
+    "description": "",
+    "activated_stake": 2000000000000,
+    "commission": 0,
+    "delinquent": false
+  },
+  {
+    "vote_identity": "ThirdVote333333333333333333333333333333333",
+    "identity": "NodeIdent3333333333333333333333333333333333",
+    "name": "P2P Validator",
+    "website": "https://p2p.org",
+    "keybase": "p2pvalidator",
+    "description": "",
+    "activated_stake": 500000000000,
+    "commission": 10,
+    "delinquent": false
   }
 ]

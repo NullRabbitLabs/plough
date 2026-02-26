@@ -2,8 +2,20 @@
 __pycache__/
 *.pyc
 .env
-state.json
-data/
 .pytest_cache/
 .claude/
+
+# Runtime state — generated at runtime, not for version control
+state.json
+scan_queue.json
+node_ip_cache.json
+stakewiz_cache.json
+known_operators.json
+scanned_validators.json
+
+# Data directory (Docker volume mount)
+data/
+
+# Prompt/planning scratch files
+*-prompt.md
 prompt.md

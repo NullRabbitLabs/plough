@@ -134,3 +134,137 @@ class TestState:
         s2 = State(tmp_state_path)
         s2.load()
         assert s2.get_previous_sui_stakes() == {"0xaaa": 1000, "0xbbb": 2000}
+
+    def test_previous_cosmos_status_roundtrip(self, tmp_state_path):
+        s = State(tmp_state_path)
+        s.set_previous_cosmos_status(
+            {"cosmosvaloper1abc": {"jailed": False, "status": "BOND_STATUS_BONDED"}}
+        )
+        s.save()
+        s2 = State(tmp_state_path)
+        s2.load()
+        assert s2.get_previous_cosmos_status() == {
+            "cosmosvaloper1abc": {"jailed": False, "status": "BOND_STATUS_BONDED"}
+        }
+
+    def test_previous_cosmos_status_defaults_to_empty(self, tmp_state_path):
+        s = State(tmp_state_path)
+        assert s.get_previous_cosmos_status() == {}
+
+    def test_previous_dot_active_roundtrip(self, tmp_state_path):
+        s = State(tmp_state_path)
+        s.set_previous_dot_active(["1abc", "1def"])
+        s.save()
+        s2 = State(tmp_state_path)
+        s2.load()
+        assert s2.get_previous_dot_active() == ["1abc", "1def"]
+
+    def test_previous_dot_active_defaults_to_empty(self, tmp_state_path):
+        s = State(tmp_state_path)
+        assert s.get_previous_dot_active() == []
+
+    def test_last_dot_slash_id_roundtrip(self, tmp_state_path):
+        s = State(tmp_state_path)
+        s.set_last_dot_slash_id("7890263-2")
+        s.save()
+        s2 = State(tmp_state_path)
+        s2.load()
+        assert s2.get_last_dot_slash_id() == "7890263-2"
+
+    def test_last_dot_slash_id_defaults_to_empty(self, tmp_state_path):
+        s = State(tmp_state_path)
+        assert s.get_last_dot_slash_id() == ""
+
+
+class TestEnrichmentConfig:
+    def test_stakewiz_cache_path_default(self, monkeypatch):
+        monkeypatch.delenv("STAKEWIZ_CACHE_PATH", raising=False)
+        cfg = Config.from_env()
+        assert cfg.stakewiz_cache_path == "stakewiz_cache.json"
+
+    def test_stakewiz_cache_path_set(self, monkeypatch):
+        monkeypatch.setenv("STAKEWIZ_CACHE_PATH", "/tmp/stakewiz.json")
+        cfg = Config.from_env()
+        assert cfg.stakewiz_cache_path == "/tmp/stakewiz.json"
+
+    def test_scanned_validators_path_default(self, monkeypatch):
+        monkeypatch.delenv("SCANNED_VALIDATORS_PATH", raising=False)
+        cfg = Config.from_env()
+        assert cfg.scanned_validators_path == "scanned_validators.json"
+
+    def test_scanned_validators_path_set(self, monkeypatch):
+        monkeypatch.setenv("SCANNED_VALIDATORS_PATH", "/tmp/scans.json")
+        cfg = Config.from_env()
+        assert cfg.scanned_validators_path == "/tmp/scans.json"
+
+
+class TestCosmosConfig:
+    def test_cosmos_defaults(self, monkeypatch):
+        monkeypatch.delenv("COSMOS_REST_URL", raising=False)
+        monkeypatch.delenv("COSMOS_VALIDATORS", raising=False)
+        monkeypatch.delenv("COSMOS_COOLDOWN_SECONDS", raising=False)
+        monkeypatch.delenv("POLL_INTERVAL_COSMOS", raising=False)
+        cfg = Config.from_env()
+        assert cfg.cosmos_rest_url == "https://api.cosmos.network"
+        assert cfg.cosmos_validators == []
+        assert cfg.cosmos_cooldown_seconds == 3600
+        assert cfg.poll_interval_cosmos == 60
+
+    def test_cosmos_env_overrides(self, monkeypatch):
+        monkeypatch.setenv("COSMOS_REST_URL", "https://custom.cosmos.node")
+        monkeypatch.setenv("COSMOS_VALIDATORS", "cosmosvaloper1abc,cosmosvaloper1def")
+        monkeypatch.setenv("COSMOS_COOLDOWN_SECONDS", "7200")
+        monkeypatch.setenv("POLL_INTERVAL_COSMOS", "120")
+        cfg = Config.from_env()
+        assert cfg.cosmos_rest_url == "https://custom.cosmos.node"
+        assert cfg.cosmos_validators == ["cosmosvaloper1abc", "cosmosvaloper1def"]
+        assert cfg.cosmos_cooldown_seconds == 7200
+        assert cfg.poll_interval_cosmos == 120
+
+    def test_cosmos_validators_empty_string_gives_empty_list(self, monkeypatch):
+        monkeypatch.setenv("COSMOS_VALIDATORS", "")
+        cfg = Config.from_env()
+        assert cfg.cosmos_validators == []
+
+    def test_cosmos_validators_whitespace_trimmed(self, monkeypatch):
+        monkeypatch.setenv("COSMOS_VALIDATORS", " cosmosvaloper1abc , cosmosvaloper1def ")
+        cfg = Config.from_env()
+        assert cfg.cosmos_validators == ["cosmosvaloper1abc", "cosmosvaloper1def"]
+
+
+class TestDotConfig:
+    def test_dot_defaults(self, monkeypatch):
+        monkeypatch.delenv("DOT_SUBSCAN_URL", raising=False)
+        monkeypatch.delenv("DOT_SUBSCAN_API_KEY", raising=False)
+        monkeypatch.delenv("DOT_VALIDATORS", raising=False)
+        monkeypatch.delenv("DOT_COOLDOWN_SECONDS", raising=False)
+        monkeypatch.delenv("POLL_INTERVAL_DOT", raising=False)
+        cfg = Config.from_env()
+        assert cfg.dot_subscan_url == "https://polkadot.api.subscan.io"
+        assert cfg.dot_subscan_api_key == ""
+        assert cfg.dot_validators == []
+        assert cfg.dot_cooldown_seconds == 3600
+        assert cfg.poll_interval_dot == 300
+
+    def test_dot_env_overrides(self, monkeypatch):
+        monkeypatch.setenv("DOT_SUBSCAN_URL", "https://custom.subscan.io")
+        monkeypatch.setenv("DOT_SUBSCAN_API_KEY", "myapikey")
+        monkeypatch.setenv("DOT_VALIDATORS", "1abc,1def")
+        monkeypatch.setenv("DOT_COOLDOWN_SECONDS", "7200")
+        monkeypatch.setenv("POLL_INTERVAL_DOT", "600")
+        cfg = Config.from_env()
+        assert cfg.dot_subscan_url == "https://custom.subscan.io"
+        assert cfg.dot_subscan_api_key == "myapikey"
+        assert cfg.dot_validators == ["1abc", "1def"]
+        assert cfg.dot_cooldown_seconds == 7200
+        assert cfg.poll_interval_dot == 600
+
+    def test_dot_validators_empty_string_gives_empty_list(self, monkeypatch):
+        monkeypatch.setenv("DOT_VALIDATORS", "")
+        cfg = Config.from_env()
+        assert cfg.dot_validators == []
+
+    def test_dot_validators_whitespace_trimmed(self, monkeypatch):
+        monkeypatch.setenv("DOT_VALIDATORS", " 1abc , 1def ")
+        cfg = Config.from_env()
+        assert cfg.dot_validators == ["1abc", "1def"]
