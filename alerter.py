@@ -186,13 +186,13 @@ class Alerter:
         self.state.record_alert(str(event.validator_index))
         self.state.save()
 
-    async def alert_sol_delinquent(self, validators: list, is_mass: bool) -> None:
+    async def alert_sol_delinquent(self, validators: list, is_mass: bool, scan_results: Optional[dict] = None) -> None:
         if self._is_quiet_hours():
             logger.info("Quiet hours — suppressing SOL delinquent alert")
             return
 
         if is_mass:
-            msg = self.format_sol_delinquent(validators, is_mass=True)
+            msg = self.format_sol_delinquent(validators, is_mass=True, scan_results=scan_results)
             await self.send_message(msg)
             for v in validators:
                 self.state.record_alert(v.vote_account)
@@ -203,7 +203,7 @@ class Alerter:
             if self.state.is_on_cooldown(v.vote_account, self.config.sol_cooldown_seconds):
                 logger.debug("Cooldown active for %s, skipping", v.vote_account)
                 continue
-            msg = self.format_sol_delinquent([v], is_mass=False)
+            msg = self.format_sol_delinquent([v], is_mass=False, scan_results=scan_results)
             await self.send_message(msg)
             self.state.record_alert(v.vote_account)
             self.state.save()
