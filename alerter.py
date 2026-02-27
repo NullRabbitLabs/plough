@@ -132,12 +132,19 @@ class Alerter:
             lines = []
             for v in validators[:10]:
                 label = v.name if v.name else v.vote_account
-                lines.append(f"• {label} ({v.activated_stake_sol:,.0f} SOL)")
-            return (
+                ips = getattr(v, "ips", [])
+                ip_str = f" | IPs: {', '.join(ips)}" if ips else ""
+                scan = getattr(v, "scan", None)
+                if scan and scan.ip_addresses:
+                    ip_str = f" | IPs: {', '.join(scan.ip_addresses)}"
+                lines.append(f"• {label} ({v.activated_stake_sol:,.0f} SOL){ip_str}")
+            header = (
                 f"⚠️ <b>Solana Mass Delinquency Event</b>\n"
                 f"{len(validators)} validators went delinquent simultaneously.\n"
-                + "\n".join(lines)
             )
+            if len(validators) > 10:
+                lines.append(f"… and {len(validators) - 10} more")
+            return header + "\n".join(lines)
         v = validators[0]
         label = "High Value" if v.name else "Unknown Operator"
         parts = [f"🟡 SOL DELINQUENT — {label}"]
