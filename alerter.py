@@ -1,6 +1,8 @@
+import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Optional
 
 import httpx
@@ -9,6 +11,8 @@ from config import Config
 from state import State
 
 logger = logging.getLogger(__name__)
+
+ALERTS_LOG_PATH = Path(__file__).parent / "alerts.jsonl"
 
 
 class Alerter:
@@ -47,6 +51,14 @@ class Alerter:
         async with httpx.AsyncClient() as client:
             resp = await client.post(self.config.slack_webhook_url, json=payload, timeout=10)
             resp.raise_for_status()
+
+    def _log_alert(self, record: dict) -> None:
+        record.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+        try:
+            with open(ALERTS_LOG_PATH, "a") as f:
+                f.write(json.dumps(record, default=str) + "\n")
+        except Exception as e:
+            logger.warning("Failed to write alert log: %s", e)
 
     async def send_message(self, text: str) -> None:
         if self.config.telegram_bot_token and self.config.telegram_chat_id:
@@ -153,6 +165,12 @@ class Alerter:
             parts.append(f"Name: {v.name}")
         parts.append(f"Stake: {v.activated_stake_sol:,.0f} SOL")
         parts.append(f"Commission: {v.commission}%")
+        ips = getattr(v, "ips", [])
+        if ips:
+            parts.append(f"Node IP: {', '.join(ips)}")
+            rdns = getattr(v, "rdns", "")
+            if rdns:
+                parts.append(f"rDNS: {rdns}")
         parts.append("")
         parts.append(self._format_sol_scan_section(v))
         scan_result = (scan_results or {}).get(v.vote_account) if scan_results else None
@@ -189,9 +207,47 @@ class Alerter:
             return
         msg = self.format_eth_slashing(event)
         await self.send_message(msg)
+        self._log_alert({
+            "alert_type": "eth_slashing",
+            "network": "ethereum",
+            "event_id": event.event_id,
+            "validator_index": event.validator_index,
+            "operator_name": getattr(event, "operator_name", ""),
+            "slash_type": getattr(event, "slash_type", ""),
+            "epoch": getattr(event, "epoch", None),
+            "slot": getattr(event, "slot", None),
+            "slashed_by": getattr(event, "slashed_by", None),
+        })
         self.state.mark_seen(event.event_id)
         self.state.record_alert(str(event.validator_index))
         self.state.save()
+
+    def _sol_validator_record(self, v) -> dict:
+        record = {
+            "network": "solana",
+            "event": "delinquent",
+            "vote_account": v.vote_account,
+            "identity": getattr(v, "identity", ""),
+            "name": getattr(v, "name", ""),
+            "stake_sol": v.activated_stake_sol,
+            "commission": v.commission,
+            "last_vote": getattr(v, "last_vote", None),
+            "root_slot": getattr(v, "root_slot", None),
+            "ips": getattr(v, "ips", []),
+            "rdns": getattr(v, "rdns", ""),
+            "website": getattr(v, "website", ""),
+            "twitter": getattr(v, "twitter", ""),
+            "discord": getattr(v, "discord", ""),
+            "keybase": getattr(v, "keybase", ""),
+        }
+        scan = getattr(v, "scan", None)
+        if scan:
+            record["scan"] = {
+                "ip_addresses": scan.ip_addresses,
+                "findings_count": len(scan.findings),
+                "scan_date": scan.scan_date,
+            }
+        return record
 
     async def alert_sol_delinquent(self, validators: list, is_mass: bool, scan_results: Optional[dict] = None) -> None:
         if self._is_quiet_hours():
@@ -201,6 +257,11 @@ class Alerter:
         if is_mass:
             msg = self.format_sol_delinquent(validators, is_mass=True, scan_results=scan_results)
             await self.send_message(msg)
+            self._log_alert({
+                "alert_type": "sol_mass_delinquent",
+                "count": len(validators),
+                "validators": [self._sol_validator_record(v) for v in validators],
+            })
             for v in validators:
                 self.state.record_alert(v.vote_account)
             self.state.save()
@@ -212,6 +273,10 @@ class Alerter:
                 continue
             msg = self.format_sol_delinquent([v], is_mass=False, scan_results=scan_results)
             await self.send_message(msg)
+            self._log_alert({
+                "alert_type": "sol_delinquent",
+                **self._sol_validator_record(v),
+            })
             self.state.record_alert(v.vote_account)
             self.state.save()
 
@@ -224,6 +289,14 @@ class Alerter:
             return
         msg = self.format_sui_drop(validator)
         await self.send_message(msg)
+        self._log_alert({
+            "alert_type": "sui_stake_drop",
+            "network": "sui",
+            "name": getattr(validator, "name", ""),
+            "sui_address": validator.sui_address,
+            "stake_amount": getattr(validator, "stake_amount", None),
+            "next_epoch_stake": getattr(validator, "next_epoch_stake", None),
+        })
         self.state.record_alert(validator.sui_address)
         self.state.save()
 
@@ -252,6 +325,13 @@ class Alerter:
             return
         msg = self.format_cosmos_jailed(validator)
         await self.send_message(msg)
+        self._log_alert({
+            "alert_type": "cosmos_jailed",
+            "network": "cosmos",
+            "moniker": getattr(validator, "moniker", ""),
+            "operator_address": validator.operator_address,
+            "status": getattr(validator, "status", ""),
+        })
         self.state.record_alert(validator.operator_address)
         self.state.save()
 
@@ -264,6 +344,13 @@ class Alerter:
             return
         msg = self.format_cosmos_inactive(validator)
         await self.send_message(msg)
+        self._log_alert({
+            "alert_type": "cosmos_inactive",
+            "network": "cosmos",
+            "moniker": getattr(validator, "moniker", ""),
+            "operator_address": validator.operator_address,
+            "status": getattr(validator, "status", ""),
+        })
         self.state.record_alert(validator.operator_address)
         self.state.save()
 
@@ -294,6 +381,12 @@ class Alerter:
             return
         msg = self.format_dot_inactive(validator)
         await self.send_message(msg)
+        self._log_alert({
+            "alert_type": "dot_inactive",
+            "network": "polkadot",
+            "display": getattr(validator, "display", ""),
+            "stash": validator.stash,
+        })
         self.state.record_alert(validator.stash)
         self.state.save()
 
@@ -306,5 +399,14 @@ class Alerter:
             return
         msg = self.format_dot_slashed(validator, event)
         await self.send_message(msg)
+        self._log_alert({
+            "alert_type": "dot_slashed",
+            "network": "polkadot",
+            "display": getattr(validator, "display", ""),
+            "stash": validator.stash,
+            "amount": getattr(event, "amount", None),
+            "block_num": getattr(event, "block_num", None),
+            "event_index": getattr(event, "event_index", None),
+        })
         self.state.mark_seen(event_key)
         self.state.save()
